@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heat Index Command Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --accent-color: #38bdf8;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Kanit', sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .status-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        #flag-label {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .flag-indicator {
+            height: 80px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            border: 4px solid rgba(255,255,255,0.1);
+            transition: all 0.5s ease;
+        }
+
+        .timer-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+        }
+
+        #timer-mode {
+            color: var(--accent-color);
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        #timer-display {
+            font-size: 5.5rem;
+            font-weight: 700;
+            font-family: monospace;
+            line-height: 1;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+        }
+
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .sensor-box {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 20px;
+            text-align: center;
+        }
+
+        .sensor-label { font-size: 0.9rem; color: #94a3b8; margin-bottom: 5px; }
+        .sensor-value { font-size: 2rem; font-weight: 700; }
+        .unit { font-size: 1rem; color: #64748b; margin-left: 5px; }
+
+        /* สีธง */
+        .flag-White { background-color: #ffffff; color: #000; }
+        .flag-Green { background-color: #22c55e; color: #fff; }
+        .flag-Yellow { background-color: #eab308; color: #000; }
+        .flag-Red { background-color: #ef4444; color: #fff; }
+        .flag-Black { background-color: #000000; color: #fff; border-color: #334155; }
+
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .btn {
+            padding: 18px;
+            border: none;
+            border-radius: 15px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-start { background: #10b981; color: white; }
+        .btn-stop { background: #f43f5e; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="status-card">
+        <span id="flag-label">ระดับความปลอดภัยขณะนี้</span>
+        <div id="flag-ui" class="flag-indicator flag-White">White</div>
+        <div style="font-size: 0.8rem; color: #94a3b8;">HI: <span id="hi-val">--</span>°C | อัปเดตทุก 10 นาที</div>
+    </div>
+
+    <div class="timer-card">
+        <div id="timer-mode">รอดึงข้อมูล...</div>
+        <div id="timer-display">00:00</div>
+    </div>
+
+    <div class="sensor-grid">
+        <div class="sensor-box">
+            <div class="sensor-label">อุณหภูมิ (DRY)</div>
+            <div class="sensor-value"><span id="dry-val">--</span><span class="unit">°C</span></div>
+        </div>
+        <div class="sensor-box">
+            <div class="sensor-label">ความชื้น (HUMI)</div>
+            <div class="sensor-value"><span id="humi-val">--</span><span class="unit">%</span></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-start" class="btn btn-start" onclick="sendControl('START')">เริ่มฝึก</button>
+        <button id="btn-stop" class="btn btn-stop" onclick="sendControl('STOP')">หยุดฝึก</button>
+    </div>
+</div>
+
+<script>
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzGe83fDRqyTSwV3al404qvMF3225sUnWpjWSoZlQ2vCOJnmd9rJuOCxKk3iZt9_q6hug/exec";
+    
+    // Logic เวลาตามโหมดและสีธง (หน่วย: นาที)
+    const flagConfig = {
+        "Black":  { WORK: 20, REST: 40 },
+        "Red":    { WORK: 30, REST: 30 },
+        "Yellow": { WORK: 45, REST: 15 },
+        "Green":  { WORK: 50, REST: 10 },
+        "White":  { WORK: 50, REST: 10 }
+    };
+
+    let sStatus = "STOP";
+    let sStart = 0;
+    let sFlag = "White";
+    let sMode = "WORK";
+
+    // 1. ซิงค์ข้อมูลกับเซิร์ฟเวอร์
+    async function sync() {
+        try {
+            const res = await fetch(GAS_URL + "?action=getStatus");
+            const data = await res.json();
+            
+            sStatus = data.status;
+            sStart = parseInt(data.startTime);
+            sFlag = data.flag || "White";
+            sMode = data.mode || "WORK";
+
+            // อัปเดต UI เซนเซอร์
+            document.getElementById('dry-val').innerText = data.dry || "--";
+            document.getElementById('humi-val').innerText = data.humi || "--";
+            document.getElementById('hi-val').innerText = data.hi || "--";
+            
+            // อัปเดตธง
+            const flagUI = document.getElementById('flag-ui');
+            flagUI.innerText = sFlag;
+            flagUI.className = "flag-indicator flag-" + sFlag;
+            
+            updateButtons();
+        } catch(e) { console.log("Sync Error", e); }
+    }
+
+    // 2. คำนวณเวลานับถอยหลัง (รันตลอดเวลา)
+    setInterval(() => {
+        if (sStatus !== "START" || sStart === 0) {
+            document.getElementById('timer-display').innerText = "00:00";
+            document.getElementById('timer-mode').innerText = "ปิดระบบการฝึก";
+            return;
+        }
+
+        // หาระยะเวลา (Duration) ตามธงและโหมดปัจจุบัน
+        const durationMins = flagConfig[sFlag] ? flagConfig[sFlag][sMode] : 50;
+        const durationMs = durationMins * 60 * 1000;
+
+        const now = Date.now();
+        const elapsed = now - sStart;
+        const remain = Math.max(0, durationMs - elapsed);
+
+        const m = Math.floor(remain / 60000).toString().padStart(2, '0');
+        const s = Math.floor((remain % 60000) / 1000).toString().padStart(2, '0');
+        
+        document.getElementById('timer-display').innerText = `${m}:${s}`;
+        document.getElementById('timer-mode').innerText = sMode === "WORK" ? "กำลังฝึก 💪" : "กำลังพัก 💤";
+    }, 500);
+
+    // 3. ฟังก์ชันควบคุม
+    async function sendControl(val) {
+        if (val === "START") {
+            const tempStart = Date.now();
+            sStatus = "START";
+            sStart = tempStart;
+            sMode = "WORK";
+            fetch(`${GAS_URL}?action=control&value=START&startTime=${tempStart}`, {mode:'no-cors'});
+        } else {
+            sStatus = "STOP";
+            sStart = 0;
+            fetch(`${GAS_URL}?action=control&value=STOP`, {mode:'no-cors'});
+        }
+        updateButtons();
+    }
+
+    function updateButtons() {
+        const startBtn = document.getElementById('btn-start');
+        const stopBtn = document.getElementById('btn-stop');
+        if (sStatus === "START") {
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        } else {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+    }
+
+    // ซิงค์ทุก 10 วินาที
+    setInterval(sync, 10000);
+    sync();
+</script>
+
+</body>
+</html>
